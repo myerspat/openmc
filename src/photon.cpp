@@ -551,6 +551,10 @@ void PhotonInteraction::calculate_xs(Particle& p) const
   // calculate interpolation factor
   double f =
     (log_E - energy_(i_grid)) / (energy_(i_grid + 1) - energy_(i_grid));
+  // Linear interpolation factor
+  auto energy_linear = xt::exp(energy_);
+  double f_linear = (p.E() - energy_linear(i_grid)) /
+                    (energy_linear(i_grid + 1) - energy_linear(i_grid));
 
   auto& xs {p.photon_xs(index_)};
   xs.index_grid = i_grid;
@@ -565,19 +569,10 @@ void PhotonInteraction::calculate_xs(Particle& p) const
     incoherent_(i_grid) + f * (incoherent_(i_grid + 1) - incoherent_(i_grid)));
 
   // Calculate microscopic photoelectric cross section
-  xs.photoelectric = 0.0;
-  for (const auto& shell : shells_) {
-    // Check threshold of reaction
-    int i_start = shell.threshold;
-    if (i_grid < i_start)
-      continue;
-
-    // Evaluation subshell photoionization cross section
-    xs.photoelectric +=
-      std::exp(shell.cross_section(i_grid - i_start) +
-               f * (shell.cross_section(i_grid + 1 - i_start) -
-                     shell.cross_section(i_grid - i_start)));
-  }
+  auto photoelectric_total_linear = xt::exp(photoelectric_total_);
+  xs.photoelectric = photoelectric_total_linear(i_grid) +
+                     f * (photoelectric_total_linear(i_grid + 1) -
+                           photoelectric_total_linear(i_grid));
 
   // Calculate microscopic pair production cross section
   xs.pair_production = std::exp(
