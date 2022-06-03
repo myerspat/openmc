@@ -565,19 +565,9 @@ void PhotonInteraction::calculate_xs(Particle& p) const
     incoherent_(i_grid) + f * (incoherent_(i_grid + 1) - incoherent_(i_grid)));
 
   // Calculate microscopic photoelectric cross section
-  xs.photoelectric = 0.0;
-  for (const auto& shell : shells_) {
-    // Check threshold of reaction
-    int i_start = shell.threshold;
-    if (i_grid < i_start)
-      continue;
-
-    // Evaluation subshell photoionization cross section
-    xs.photoelectric +=
-      std::exp(shell.cross_section(i_grid - i_start) +
-               f * (shell.cross_section(i_grid + 1 - i_start) -
-                     shell.cross_section(i_grid - i_start)));
-  }
+  xs.photoelectric = std::exp(
+    photoelectric_total_(i_grid) +
+    f * (photoelectric_total_(i_grid + 1) - photoelectric_total_(i_grid)));
 
   // Calculate microscopic pair production cross section
   xs.pair_production = std::exp(
