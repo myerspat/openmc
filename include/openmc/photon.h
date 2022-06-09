@@ -13,6 +13,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility> // for pair
+#include <xtensor/xtensor_forward.hpp>
 
 namespace openmc {
 
@@ -36,7 +37,6 @@ public:
   int threshold;
   double n_electrons;
   double binding_energy;
-  xt::xtensor<double, 1> cross_section;
   vector<Transition> transitions;
 };
 
@@ -66,13 +66,8 @@ public:
 
   // Microscopic cross sections
   xt::xtensor<double, 1> energy_;
-  xt::xtensor<double, 1> coherent_;
-  xt::xtensor<double, 1> incoherent_;
-  xt::xtensor<double, 1> photoelectric_total_;
-  xt::xtensor<double, 1> pair_production_total_;
-  xt::xtensor<double, 1> pair_production_electron_;
-  xt::xtensor<double, 1> pair_production_nuclear_;
   xt::xtensor<double, 1> heating_;
+  xt::xtensor<double, 2> cross_sections_;
 
   // Form factors
   Tabulated1D incoherent_form_factor_;

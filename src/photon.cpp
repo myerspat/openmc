@@ -20,6 +20,10 @@
 #include <cmath>
 #include <fmt/core.h>
 #include <tuple> // for tie
+#include <xtensor/xmath.hpp>
+#include <xtensor/xslice.hpp>
+#include <xtensor/xtensor_forward.hpp>
+#include <xtensor/xio.hpp>
 
 namespace openmc {
 
@@ -57,9 +61,15 @@ PhotonInteraction::PhotonInteraction(hid_t group)
   // Determine number of energies and read energy grid
   read_dataset(group, "energy", energy_);
 
+  // Define intermediate xtensors for cross_sections_
+  xt::xtensor<double, 1> coherent;
+  xt::xtensor<double, 1> incoherent;
+  xt::xtensor<double, 1> pair_production_total;
+  xt::xtensor<double, 1> pair_production_nuclear;
+
   // Read coherent scattering
   hid_t rgroup = open_group(group, "coherent");
-  read_dataset(rgroup, "xs", coherent_);
+  read_dataset(rgroup, "xs", coherent);
 
   hid_t dset = open_dataset(rgroup, "integrated_scattering_factor");
   coherent_int_form_factor_ = Tabulated1D {dset};
@@ -80,7 +90,8 @@ PhotonInteraction::PhotonInteraction(hid_t group)
 
   // Read incoherent scattering
   rgroup = open_group(group, "incoherent");
-  read_dataset(rgroup, "xs", incoherent_);
+  read_dataset(rgroup, "xs", incoherent);
+
   dset = open_dataset(rgroup, "scattering_factor");
   incoherent_form_factor_ = Tabulated1D {dset};
   close_dataset(dset);
@@ -88,22 +99,16 @@ PhotonInteraction::PhotonInteraction(hid_t group)
 
   // Read pair production
   rgroup = open_group(group, "pair_production_electron");
-  read_dataset(rgroup, "xs", pair_production_electron_);
+  read_dataset(rgroup, "xs", pair_production_total);
   close_group(rgroup);
 
   // Read pair production
   if (object_exists(group, "pair_production_nuclear")) {
     rgroup = open_group(group, "pair_production_nuclear");
-    read_dataset(rgroup, "xs", pair_production_nuclear_);
+    read_dataset(rgroup, "xs", pair_production_nuclear);
+    pair_production_total += pair_production_nuclear;
     close_group(rgroup);
-  } else {
-    pair_production_nuclear_ = xt::zeros_like(energy_);
   }
-
-  // Read photoelectric
-  rgroup = open_group(group, "photoelectric");
-  read_dataset(rgroup, "xs", photoelectric_total_);
-  close_group(rgroup);
 
   // Read heating
   if (object_exists(group, "heating")) {
@@ -125,6 +130,7 @@ PhotonInteraction::PhotonInteraction(hid_t group)
   }
 
   shells_.resize(n_shell);
+  cross_sections_ = xt::zeros<double>({energy_.size(), n_shell + 3});
 
   // Create mapping from designator to index
   std::unordered_map<int, int> shell_map;
@@ -141,7 +147,17 @@ PhotonInteraction::PhotonInteraction(hid_t group)
       ++j;
     }
   }
+
   shell_map[0] = -1;
+ 
+  // Fill cross_sections_ xtensor
+  auto xs_coherent = xt::view(cross_sections_, xt::all(), n_shell);
+  auto xs_incoherent = xt::view(cross_sections_, xt::all(), n_shell + 1);
+  auto xs_pair_production = xt::view(cross_sections_, xt::all(), n_shell + 2);
+
+  xs_coherent = coherent;
+  xs_incoherent = incoherent;
+  xs_pair_production = pair_production_total;
 
   for (int i = 0; i < n_shell; ++i) {
     const auto& designator {designators[i]};
@@ -155,13 +171,15 @@ PhotonInteraction::PhotonInteraction(hid_t group)
     read_attribute(tgroup, "num_electrons", shell.n_electrons);
 
     // Read subshell cross section
+    xt::xtensor<double, 1> photoelectric;
     dset = open_dataset(tgroup, "xs");
     read_attribute(dset, "threshold_idx", shell.threshold);
     close_dataset(dset);
-    read_dataset(tgroup, "xs", shell.cross_section);
+    read_dataset(tgroup, "xs", photoelectric);
 
-    auto& xs = shell.cross_section;
-    xs = xt::where(xs > 0.0, xt::log(xs), -500.0);
+    auto xs_photoelectric = xt::view(cross_sections_, 
+        xt::range(shell.threshold, xt::placeholders::_), i);
+    xs_photoelectric = photoelectric;
 
     if (object_exists(tgroup, "transitions")) {
       // Determine dimensions of transitions
@@ -230,9 +248,6 @@ PhotonInteraction::PhotonInteraction(hid_t group)
       profile_cdf_(i, j + 1) = c;
     }
   }
-
-  // Calculate total pair production
-  pair_production_total_ = pair_production_nuclear_ + pair_production_electron_;
 
   if (settings::electron_treatment == ElectronTreatment::TTB) {
     // Read bremsstrahlung scaled DCS
@@ -313,13 +328,8 @@ PhotonInteraction::PhotonInteraction(hid_t group)
   // Take logarithm of energies and cross sections since they are log-log
   // interpolated
   energy_ = xt::log(energy_);
-  coherent_ = xt::where(coherent_ > 0.0, xt::log(coherent_), -500.0);
-  incoherent_ = xt::where(incoherent_ > 0.0, xt::log(incoherent_), -500.0);
-  photoelectric_total_ = xt::where(
-    photoelectric_total_ > 0.0, xt::log(photoelectric_total_), -500.0);
-  pair_production_total_ = xt::where(
-    pair_production_total_ > 0.0, xt::log(pair_production_total_), -500.0);
   heating_ = xt::where(heating_ > 0.0, xt::log(heating_), -500.0);
+  cross_sections_ = xt::where(cross_sections_ > 0.0, xt::log(cross_sections_), -500.0);
 }
 
 PhotonInteraction::~PhotonInteraction()
@@ -556,37 +566,29 @@ void PhotonInteraction::calculate_xs(Particle& p) const
   xs.index_grid = i_grid;
   xs.interp_factor = f;
 
-  // Calculate microscopic coherent cross section
-  xs.coherent = std::exp(
-    coherent_(i_grid) + f * (coherent_(i_grid + 1) - coherent_(i_grid)));
-
-  // Calculate microscopic incoherent cross section
-  xs.incoherent = std::exp(
-    incoherent_(i_grid) + f * (incoherent_(i_grid + 1) - incoherent_(i_grid)));
+  // Fetch row of cross_sections_ for this energy
+  const auto& xs_lower = xt::row(cross_sections_, i_grid);
+  const auto& xs_upper = xt::row(cross_sections_, i_grid + 1);
+  const int n_shell = xs_lower.size() - 3;
 
   // Calculate microscopic photoelectric cross section
   xs.photoelectric = 0.0;
-  for (const auto& shell : shells_) {
-    // Check threshold of reaction
-    int i_start = shell.threshold;
-    if (i_grid < i_start)
-      continue;
+  for (int i = 0; i < n_shell; ++i)
+    if (xs_lower(i) != -500.0)
+      xs.photoelectric += std::exp(xs_lower(i) + f * (xs_upper(i) - xs_lower(i)));
+  
+  // Calculate microscopic coherent cross section
+  xs.coherent = std::exp(xs_lower(n_shell) + f * (xs_upper(n_shell) - xs_lower(n_shell)));
 
-    // Evaluation subshell photoionization cross section
-    xs.photoelectric +=
-      std::exp(shell.cross_section(i_grid - i_start) +
-               f * (shell.cross_section(i_grid + 1 - i_start) -
-                     shell.cross_section(i_grid - i_start)));
-  }
+  // Calculate microscopic incoherent cross section
+  xs.incoherent = std::exp(xs_lower(n_shell + 1) + f * (xs_upper(n_shell + 1) - xs_lower(n_shell + 1)));
 
   // Calculate microscopic pair production cross section
-  xs.pair_production = std::exp(
-    pair_production_total_(i_grid) +
-    f * (pair_production_total_(i_grid + 1) - pair_production_total_(i_grid)));
+  xs.pair_production = std::exp(xs_lower(n_shell + 2) + f * (xs_upper(n_shell + 2) - xs_lower(n_shell + 2)));
 
   // Calculate microscopic total cross section
   xs.total =
-    xs.coherent + xs.incoherent + xs.photoelectric + xs.pair_production;
+    xs.photoelectric + xs.coherent + xs.incoherent + xs.pair_production;
   xs.last_E = p.E();
 }
 
