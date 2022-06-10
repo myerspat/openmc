@@ -20,10 +20,10 @@
 #include <cmath>
 #include <fmt/core.h>
 #include <tuple> // for tie
+#include <xtensor/xio.hpp>
 #include <xtensor/xmath.hpp>
 #include <xtensor/xslice.hpp>
 #include <xtensor/xtensor_forward.hpp>
-#include <xtensor/xio.hpp>
 
 namespace openmc {
 
@@ -149,7 +149,7 @@ PhotonInteraction::PhotonInteraction(hid_t group)
   }
 
   shell_map[0] = -1;
- 
+
   // Fill cross_sections_ xtensor
   auto xs_coherent = xt::view(cross_sections_, xt::all(), n_shell);
   auto xs_incoherent = xt::view(cross_sections_, xt::all(), n_shell + 1);
@@ -177,8 +177,8 @@ PhotonInteraction::PhotonInteraction(hid_t group)
     close_dataset(dset);
     read_dataset(tgroup, "xs", photoelectric);
 
-    auto xs_photoelectric = xt::view(cross_sections_, 
-        xt::range(shell.threshold, xt::placeholders::_), i);
+    auto xs_photoelectric = xt::view(
+      cross_sections_, xt::range(shell.threshold, xt::placeholders::_), i);
     xs_photoelectric = photoelectric;
 
     if (object_exists(tgroup, "transitions")) {
@@ -329,7 +329,8 @@ PhotonInteraction::PhotonInteraction(hid_t group)
   // interpolated
   energy_ = xt::log(energy_);
   heating_ = xt::where(heating_ > 0.0, xt::log(heating_), -500.0);
-  cross_sections_ = xt::where(cross_sections_ > 0.0, xt::log(cross_sections_), -500.0);
+  cross_sections_ =
+    xt::where(cross_sections_ > 0.0, xt::log(cross_sections_), -500.0);
 }
 
 PhotonInteraction::~PhotonInteraction()
@@ -575,16 +576,21 @@ void PhotonInteraction::calculate_xs(Particle& p) const
   xs.photoelectric = 0.0;
   for (int i = 0; i < n_shell; ++i)
     if (xs_lower(i) != -500.0)
-      xs.photoelectric += std::exp(xs_lower(i) + f * (xs_upper(i) - xs_lower(i)));
-  
+      xs.photoelectric +=
+        std::exp(xs_lower(i) + f * (xs_upper(i) - xs_lower(i)));
+
   // Calculate microscopic coherent cross section
-  xs.coherent = std::exp(xs_lower(n_shell) + f * (xs_upper(n_shell) - xs_lower(n_shell)));
+  xs.coherent =
+    std::exp(xs_lower(n_shell) + f * (xs_upper(n_shell) - xs_lower(n_shell)));
 
   // Calculate microscopic incoherent cross section
-  xs.incoherent = std::exp(xs_lower(n_shell + 1) + f * (xs_upper(n_shell + 1) - xs_lower(n_shell + 1)));
+  xs.incoherent = std::exp(xs_lower(n_shell + 1) +
+                           f * (xs_upper(n_shell + 1) - xs_lower(n_shell + 1)));
 
   // Calculate microscopic pair production cross section
-  xs.pair_production = std::exp(xs_lower(n_shell + 2) + f * (xs_upper(n_shell + 2) - xs_lower(n_shell + 2)));
+  xs.pair_production =
+    std::exp(xs_lower(n_shell + 2) +
+             f * (xs_upper(n_shell + 2) - xs_lower(n_shell + 2)));
 
   // Calculate microscopic total cross section
   xs.total =
