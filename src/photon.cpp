@@ -16,10 +16,12 @@
 #include "xtensor/xbuilder.hpp"
 #include "xtensor/xoperation.hpp"
 #include "xtensor/xview.hpp"
+#include "xtensor/xstrides.hpp"
 
 #include <cmath>
 #include <fmt/core.h>
 #include <tuple> // for tie
+#include <xtensor/xshape.hpp>
 
 namespace openmc {
 
@@ -186,9 +188,9 @@ PhotonInteraction::PhotonInteraction(hid_t group)
           transition.energy = matrix(j, 2);
           transition.probability = matrix(j, 3) / norm;
           if (j > 0)
-            shell.cum_probability(j) = transition.probability + shell.cum_probability(j - 1);
+            shell.cum_probability[j] = transition.probability + shell.cum_probability[j - 1];
           else
-            shell.cum_probability(j) = transition.probability;
+            shell.cum_probability[j] = transition.probability;
         }
       }
     }
@@ -777,7 +779,7 @@ void PhotonInteraction::atomic_relaxation(int i_shell, Particle& p) const
     double c = prn(p.current_seed());
     int i_trans;
     for (i_trans = 0; i_trans < cum_probabilities.size(); ++i_trans)
-      if (c < cum_probabilities(i_trans))
+      if (c < cum_probabilities[i_trans])
         break;
 
     const auto& transition = shell.transitions[i_trans];

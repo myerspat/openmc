@@ -40,7 +40,7 @@ public:
   double binding_energy;
   xt::xtensor<double, 1> cross_section;
   vector<Transition> transitions;
-  xt::xtensor<double, 1> cum_probability;
+  vector<double> cum_probability;
 };
 
 class PhotonInteraction {
