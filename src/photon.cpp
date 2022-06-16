@@ -186,11 +186,10 @@ PhotonInteraction::PhotonInteraction(hid_t group)
           transition.primary_subshell = shell_map.at(matrix(j, 0));
           transition.secondary_subshell = shell_map.at(matrix(j, 1));
           transition.energy = matrix(j, 2);
-          transition.probability = matrix(j, 3) / norm;
           if (j > 0)
-            shell.cum_probability[j] = transition.probability + shell.cum_probability[j - 1];
+            shell.cum_probability[j] = (matrix(j, 3) / norm) + shell.cum_probability[j - 1];
           else
-            shell.cum_probability[j] = transition.probability;
+            shell.cum_probability[j] = (matrix(j, 3) / norm);
         }
       }
     }
@@ -777,33 +776,34 @@ void PhotonInteraction::atomic_relaxation(int i_shell, Particle& p) const
     // Sample transition
     const auto& cum_probabilities = shell.cum_probability;
     double c = prn(p.current_seed());
-    int i_trans;
-    for (i_trans = 0; i_trans < cum_probabilities.size(); ++i_trans)
-      if (c < cum_probabilities[i_trans])
+
+    for (int i_trans = 0; i_trans < cum_probabilities.size(); ++i_trans) {
+      if (c < cum_probabilities[i_trans]) {
+        const auto& transition = shell.transitions[i_trans];
+
+        // Sample angle isotropically
+        Direction u = isotropic_direction(p.current_seed());
+
+        // Push the hole created by the electron transitioning to the photoelectron
+        // hole onto the stack
+        holes[n_holes++] = transition.primary_subshell;
+
+        if (transition.secondary_subshell != -1) {
+          // Non-radiative transition -- Auger/Coster-Kronig effect
+
+          // Push the hole left by emitted auger electron onto the stack
+          holes[n_holes++] = transition.secondary_subshell;
+
+          // Create auger electron
+          p.create_secondary(p.wgt(), u, transition.energy, ParticleType::electron);
+        } else {
+          // Radiative transition -- get X-ray energy
+
+          // Create fluorescent photon
+          p.create_secondary(p.wgt(), u, transition.energy, ParticleType::photon);
+        }
         break;
-
-    const auto& transition = shell.transitions[i_trans];
-
-    // Sample angle isotropically
-    Direction u = isotropic_direction(p.current_seed());
-
-    // Push the hole created by the electron transitioning to the photoelectron
-    // hole onto the stack
-    holes[n_holes++] = transition.primary_subshell;
-
-    if (transition.secondary_subshell != -1) {
-      // Non-radiative transition -- Auger/Coster-Kronig effect
-
-      // Push the hole left by emitted auger electron onto the stack
-      holes[n_holes++] = transition.secondary_subshell;
-
-      // Create auger electron
-      p.create_secondary(p.wgt(), u, transition.energy, ParticleType::electron);
-    } else {
-      // Radiative transition -- get X-ray energy
-
-      // Create fluorescent photon
-      p.create_secondary(p.wgt(), u, transition.energy, ParticleType::photon);
+      }
     }
   }
 }

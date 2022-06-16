@@ -28,7 +28,6 @@ public:
     int primary_subshell;   //!< Index in shells_ of originating subshell
     int secondary_subshell; //!< Index in shells_ of Auger electron subshell
     double energy;          //!< Energy of transition
-    double probability;     //!< Probability of transition between subshells
   };
 
   // Constructors
@@ -39,6 +38,8 @@ public:
   double n_electrons;
   double binding_energy;
   xt::xtensor<double, 1> cross_section;
+
+  // Transition data members
   vector<Transition> transitions;
   vector<double> cum_probability;
 };
