@@ -178,12 +178,17 @@ PhotonInteraction::PhotonInteraction(hid_t group)
         double norm = xt::sum(xt::col(matrix, 3))();
 
         shell.transitions.resize(n_transition);
+        shell.cum_probability.resize(n_transition);
         for (int j = 0; j < n_transition; ++j) {
           auto& transition = shell.transitions[j];
           transition.primary_subshell = shell_map.at(matrix(j, 0));
           transition.secondary_subshell = shell_map.at(matrix(j, 1));
           transition.energy = matrix(j, 2);
           transition.probability = matrix(j, 3) / norm;
+          if (j > 0)
+            shell.cum_probability(j) = transition.probability + shell.cum_probability(j - 1);
+          else
+            shell.cum_probability(j) = transition.probability;
         }
       }
     }
@@ -768,13 +773,13 @@ void PhotonInteraction::atomic_relaxation(int i_shell, Particle& p) const
     }
 
     // Sample transition
-    double c = -prn(p.current_seed());
+    const auto& cum_probabilities = shell.cum_probability;
+    double c = prn(p.current_seed());
     int i_trans;
-    for (i_trans = 0; i_trans < shell.transitions.size(); ++i_trans) {
-      c += shell.transitions[i_trans].probability;
-      if (c > 0)
+    for (i_trans = 0; i_trans < cum_probabilities.size(); ++i_trans)
+      if (c < cum_probabilities(i_trans))
         break;
-    }
+
     const auto& transition = shell.transitions[i_trans];
 
     // Sample angle isotropically

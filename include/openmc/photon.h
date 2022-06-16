@@ -14,6 +14,8 @@
 #include <unordered_map>
 #include <utility> // for pair
 
+#include <xtensor/xtensor_forward.hpp>
+
 namespace openmc {
 
 //==============================================================================
@@ -38,6 +40,7 @@ public:
   double binding_energy;
   xt::xtensor<double, 1> cross_section;
   vector<Transition> transitions;
+  xt::xtensor<double, 1> cum_probability;
 };
 
 class PhotonInteraction {
