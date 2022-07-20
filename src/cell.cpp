@@ -522,30 +522,6 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   // Convert the infix region spec to prefix notation
   region_prefix_ = generate_region_prefix(id_, region_);
 
-  // Check if this is a simple cell.
-  simple_ = true;
-  for (int32_t token : region_prefix_) {
-    if ((token == OP_COMPLEMENT) || (token == OP_UNION)) {
-      simple_ = false;
-      break;
-    }
-  }
-
-  // If this cell is simple, remove all the superfluous operator tokens.
-  if (simple_) {
-    size_t i0 = 0;
-    size_t i1 = 0;
-    while (i1 < region_prefix_.size()) {
-      if (region_prefix_[i1] < OP_UNION) {
-        region_prefix_[i0] = region_prefix_[i1];
-        ++i0;
-      }
-      ++i1;
-    }
-    region_prefix_.resize(i0);
-  }
-  region_prefix_.shrink_to_fit();
-
   // Read the translation vector.
   if (check_for_node(cell_node, "translation")) {
     if (fill_ == C_NONE) {
@@ -566,17 +542,6 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   if (check_for_node(cell_node, "rotation")) {
     auto rot {get_node_array<double>(cell_node, "rotation")};
     set_rotation(rot);
-  }
-}
-
-//==============================================================================
-
-bool CSGCell::contains(Position r, Direction u, int32_t on_surface) const
-{
-  if (simple_) {
-    return contains_simple(r, u, on_surface);
-  } else {
-    return contains_complex(r, u, on_surface);
   }
 }
 
@@ -749,30 +714,7 @@ BoundingBox CSGCell::bounding_box() const
 
 //==============================================================================
 
-bool CSGCell::contains_simple(Position r, Direction u, int32_t on_surface) const
-{
-  for (int32_t token : region_prefix_) {
-    // Assume that no tokens are operators. Evaluate the sense of particle with
-    // respect to the surface and see if the token matches the sense. If the
-    // particle's surface attribute is set and matches the token, that
-    // overrides the determination based on sense().
-    if (token == on_surface) {
-    } else if (-token == on_surface) {
-      return false;
-    } else {
-      // Note the off-by-one indexing
-      bool sense = model::surfaces[abs(token) - 1]->sense(r, u);
-      if (sense != (token > 0)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-//==============================================================================
-
-bool CSGCell::contains_complex(
+bool CSGCell::contains(
   Position r, Direction u, int32_t on_surface) const
 {
   // Initialize a stack for operators and the in cell boolean
