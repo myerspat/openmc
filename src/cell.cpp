@@ -524,6 +524,7 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
 
   // Check if this is a simple cell.
   simple_ = false;
+  region_prefix_.shrink_to_fit();
 
   // Read the translation vector.
   if (check_for_node(cell_node, "translation")) {
