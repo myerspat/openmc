@@ -556,6 +556,11 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
 
 //==============================================================================
 
+bool CSGCell::contains(Position r, Direction u, int32_t on_surface) const
+{
+  return contains_complex(r, u, on_surface);
+}
+
 std::pair<double, int32_t> CSGCell::distance(
   Position r, Direction u, int32_t on_surface, Particle* p) const
 {
@@ -723,7 +728,7 @@ BoundingBox CSGCell::bounding_box() const
 
 //==============================================================================
 
-bool CSGCell::contains(
+bool CSGCell::contains_complex(
   Position r, Direction u, int32_t on_surface) const
 {
   // Initialize a stack for operators and the in cell boolean

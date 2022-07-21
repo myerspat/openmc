@@ -245,6 +245,7 @@ public:
   BoundingBox bounding_box() const override;
 
 protected:
+  bool contains_complex(Position r, Direction u, int32_t on_surface) const;
   BoundingBox bounding_box_simple() const;
   static BoundingBox bounding_box_complex(vector<int32_t> region_prefix);
 
