@@ -522,10 +522,6 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   // Convert the infix region spec to prefix notation
   region_prefix_ = generate_region_prefix(id_, region_);
 
-  // Check if this is a simple cell.
-  simple_ = false;
-  region_prefix_.shrink_to_fit();
-
   // Read the translation vector.
   if (check_for_node(cell_node, "translation")) {
     if (fill_ == C_NONE) {
@@ -550,11 +546,6 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
 }
 
 //==============================================================================
-
-bool CSGCell::contains(Position r, Direction u, int32_t on_surface) const
-{
-  return contains_complex(r, u, on_surface);
-}
 
 std::pair<double, int32_t> CSGCell::distance(
   Position r, Direction u, int32_t on_surface, Particle* p) const
@@ -723,12 +714,12 @@ BoundingBox CSGCell::bounding_box() const
 
 //==============================================================================
 
-bool CSGCell::contains_complex(
+bool CSGCell::contains(
   Position r, Direction u, int32_t on_surface) const
 {
   // Initialize a stack for operators and the in cell boolean
   OperatorStack op_stack;
-  bool in_cell = false;
+  bool in_cell = true;
 
   // For each token in prefix
   for (auto it = region_prefix_.begin(); it != region_prefix_.end(); it++) {

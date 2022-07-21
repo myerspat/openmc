@@ -204,7 +204,7 @@ public:
   vector<std::int32_t> region_;
   //! Reverse Polish notation for region expression
   vector<std::int32_t> region_prefix_;
-  bool simple_; //!< Does the region contain only intersections?
+  bool simple_ = false; //!< Does the region contain only intersections?
 
   //! \brief Neighboring cells in the same universe.
   NeighborList neighbors_;
@@ -245,7 +245,6 @@ public:
   BoundingBox bounding_box() const override;
 
 protected:
-  bool contains_complex(Position r, Direction u, int32_t on_surface) const;
   BoundingBox bounding_box_simple() const;
   static BoundingBox bounding_box_complex(vector<int32_t> region_prefix);
 
