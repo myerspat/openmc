@@ -523,13 +523,7 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   region_prefix_ = generate_region_prefix(id_, region_);
 
   // Check if this is a simple cell.
-  simple_ = true;
-  for (int32_t token : region_prefix_) {
-    if ((token == OP_COMPLEMENT) || (token == OP_UNION)) {
-      simple_ = false;
-      break;
-    }
-  }
+  simple_ = false;
 
   // Read the translation vector.
   if (check_for_node(cell_node, "translation")) {
