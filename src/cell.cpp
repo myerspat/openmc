@@ -621,14 +621,12 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
 
   region_infix_ = region_;
   // If this cell is simple, remove all the superfluous operator tokens.
-  if (simple_) {
-    for (auto it = region_infix_.begin(); it != region_infix_.end(); it++) {
-      if (*it == OP_INTERSECTION || *it > OP_COMPLEMENT) {
-        region_infix_.erase(it);
-      }
+  for (auto it = region_infix_.begin(); it != region_infix_.end(); it++) {
+    if (*it == OP_INTERSECTION || (simple_ && *it > OP_COMPLEMENT)) {
+      region_infix_.erase(it);
     }
-    region_infix_.shrink_to_fit();
   }
+  region_infix_.shrink_to_fit();
 
   // Read the translation vector.
   if (check_for_node(cell_node, "translation")) {
@@ -869,15 +867,15 @@ bool CSGCell::contains_complex(
   Position r, Direction u, int32_t on_surface) const
 {
   bool in_cell = true;
+  int paren_depth = 0;
 
   // For each token
   for (auto it = region_infix_.begin(); it != region_infix_.end(); it++) {
     int32_t token = *it;
 
-    // If the token is a surface evaluate the sense
-    // If the token is a union or intersection check to
-    // short circuit
-    if (token < OP_UNION) {
+    // If the token is a surface and in_cell is true then evaluate the surfaces
+    // sense
+    if (token < OP_UNION && in_cell == true) {
       if (token == on_surface) {
         in_cell = true;
       } else if (-token == on_surface) {
@@ -887,25 +885,45 @@ bool CSGCell::contains_complex(
         bool sense = model::surfaces[abs(token) - 1]->sense(r, u);
         in_cell = (sense == (token > 0));
       }
-    } else if ((token == OP_UNION && in_cell == true) ||
-               (token == OP_INTERSECTION && in_cell == false)) {
-      // While the iterator is within the bounds of the vector
-      int depth = 1;
-      do {
-        // Get next token
-        it++;
-        int32_t next_token = *it;
 
-        // If the token is an a parenthesis
-        if (next_token > OP_COMPLEMENT) {
-          // Adjust depth accordingly
-          if (next_token == OP_RIGHT_PAREN) {
-            depth--;
-          } else {
-            depth++;
+    } else if (token == OP_UNION) {
+      // If our token is a union short circuit if in_cell is true
+      if (in_cell == false) {
+        in_cell = true;
+      } else if (paren_depth == 0) {
+        return true;
+      } else {
+        int short_circuit_depth = 1;
+        while (short_circuit_depth > 0 && it < region_infix_.end() - 1) {
+          it++;
+          if (*it > OP_COMPLEMENT) {
+            if (*it == OP_LEFT_PAREN) {
+              short_circuit_depth++;
+            } else {
+              short_circuit_depth--;
+            }
           }
         }
-      } while (depth > 0 && it < region_infix_.end() - 1);
+      }
+
+    } else if (token == OP_LEFT_PAREN) {
+      paren_depth++;
+    } else {
+      paren_depth--;
+      // If in_cell is false then short circuit
+      if (in_cell == false) {
+        int short_circuit_depth = 1;
+        while (short_circuit_depth > 0 && it < region_infix_.end() - 1) {
+          it++;
+          if (*it > OP_COMPLEMENT) {
+            if (*it == OP_LEFT_PAREN) {
+              short_circuit_depth++;
+            } else {
+              short_circuit_depth--;
+            }
+          }
+        }
+      }
     }
   }
   return in_cell;
