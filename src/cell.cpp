@@ -576,7 +576,6 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   // Get a tokenized representation of the region specification.
   region_ = tokenize(region_spec);
   remove_complement_ops(region_);
-  region_.shrink_to_fit();
 
   // Convert user IDs to surface indices.
   for (auto& r : region_) {
@@ -601,23 +600,25 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
       break;
     }
   }
+  region_.shrink_to_fit();
 
+  region_postfix_.resize(region_.size());
   // If this cell is simple, remove all the superfluous operator tokens.
   if (simple_) {
     size_t i0 = 0;
     size_t i1 = 0;
     while (i1 < region_.size()) {
       if (region_[i1] < OP_UNION) {
-        region_[i0] = region_[i1];
+        region_postfix_[i0] = region_[i1];
         ++i0;
       }
       ++i1;
     }
-    region_.resize(i0);
+    region_postfix_.resize(i0);
   } else {
-    region_ = generate_rpn(id_, region_);
+    region_postfix_ = generate_rpn(id_, region_);
   }
-  region_.shrink_to_fit();
+  region_postfix_.shrink_to_fit();
 
   // Read the translation vector.
   if (check_for_node(cell_node, "translation")) {
@@ -661,7 +662,7 @@ std::pair<double, int32_t> CSGCell::distance(
   double min_dist {INFTY};
   int32_t i_surf {std::numeric_limits<int32_t>::max()};
 
-  for (int32_t token : region_) {
+  for (int32_t token : region_postfix_) {
     // Ignore this token if it corresponds to an operator rather than a region.
     if (token >= OP_UNION)
       continue;
@@ -716,7 +717,7 @@ void CSGCell::to_hdf5_inner(hid_t group_id) const
 BoundingBox CSGCell::bounding_box_simple() const
 {
   BoundingBox bbox;
-  for (int32_t token : region_) {
+  for (int32_t token : region_postfix_) {
     bbox &= model::surfaces[abs(token) - 1]->bounding_box(token > 0);
   }
   return bbox;
@@ -829,14 +830,14 @@ BoundingBox CSGCell::bounding_box_complex(vector<int32_t> rpn)
 
 BoundingBox CSGCell::bounding_box() const
 {
-  return simple_ ? bounding_box_simple() : bounding_box_complex(region_);
+  return simple_ ? bounding_box_simple() : bounding_box_complex(region_postfix_);
 }
 
 //==============================================================================
 
 bool CSGCell::contains_simple(Position r, Direction u, int32_t on_surface) const
 {
-  for (int32_t token : region_) {
+  for (int32_t token : region_postfix_) {
     // Assume that no tokens are operators. Evaluate the sense of particle with
     // respect to the surface and see if the token matches the sense. If the
     // particle's surface attribute is set and matches the token, that
@@ -862,10 +863,10 @@ bool CSGCell::contains_complex(
 {
   // Make a stack of booleans.  We don't know how big it needs to be, but we do
   // know that rpn.size() is an upper-bound.
-  vector<bool> stack(region_.size());
+  vector<bool> stack(region_postfix_.size());
   int i_stack = -1;
 
-  for (int32_t token : region_) {
+  for (int32_t token : region_postfix_) {
     // If the token is a binary operator (intersection/union), apply it to
     // the last two items on the stack. If the token is a unary operator
     // (complement), apply it to the last item on the stack.

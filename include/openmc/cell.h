@@ -202,6 +202,8 @@ public:
 
   //! Definition of spatial region as Boolean expression of half-spaces
   vector<std::int32_t> region_;
+  //! Region in postfix notation
+  vector<std::int32_t> region_postfix_;
   bool simple_; //!< Does the region contain only intersections?
 
   //! \brief Neighboring cells in the same universe.
