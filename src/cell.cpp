@@ -875,15 +875,17 @@ bool CSGCell::contains_complex(
 
     // If the token is a surface and in_cell is true then evaluate the surfaces
     // sense
-    if (token < OP_UNION && in_cell == true) {
-      if (token == on_surface) {
-        in_cell = true;
-      } else if (-token == on_surface) {
-        in_cell = false;
-      } else {
-        // Note the off-by-one indexing
-        bool sense = model::surfaces[abs(token) - 1]->sense(r, u);
-        in_cell = (sense == (token > 0));
+    if (token < OP_UNION) {
+        if (in_cell == true) {
+        if (token == on_surface) {
+          in_cell = true;
+        } else if (-token == on_surface) {
+          in_cell = false;
+        } else {
+          // Note the off-by-one indexing
+          bool sense = model::surfaces[abs(token) - 1]->sense(r, u);
+          in_cell = (sense == (token > 0));
+        }
       }
 
     } else if (token == OP_UNION) {
@@ -908,8 +910,7 @@ bool CSGCell::contains_complex(
 
     } else if (token == OP_LEFT_PAREN) {
       paren_depth++;
-    } else {
-      paren_depth--;
+      
       // If in_cell is false then short circuit
       if (in_cell == false) {
         int short_circuit_depth = 1;
@@ -924,6 +925,9 @@ bool CSGCell::contains_complex(
           }
         }
       }
+
+    } else {
+      paren_depth--;
     }
   }
   return in_cell;
