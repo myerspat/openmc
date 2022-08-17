@@ -129,7 +129,6 @@ PhotonInteraction::PhotonInteraction(hid_t group)
   }
 
   shells_.resize(n_shell);
-  cross_sections_ = xt::zeros<double>({energy_.size(), n_shell});
 
   // Create mapping from designator to index
   std::unordered_map<int, int> shell_map;
@@ -160,15 +159,13 @@ PhotonInteraction::PhotonInteraction(hid_t group)
     read_attribute(tgroup, "num_electrons", shell.n_electrons);
 
     // Read subshell cross section
-    xt::xtensor<double, 1> xs;
     dset = open_dataset(tgroup, "xs");
     read_attribute(dset, "threshold_idx", shell.threshold);
     close_dataset(dset);
-    read_dataset(tgroup, "xs", xs);
+    read_dataset(tgroup, "xs", shell.cross_section);
 
-    auto cross_section =
-      xt::view(cross_sections_, xt::range(shell.threshold, _), i);
-    cross_section = xt::where(xs > 0, xt::log(xs), 0);
+    auto& xs = shell.cross_section;
+    xs = xt::where(xs > 0.0, xt::log(xs), -500.0);
 
     if (object_exists(tgroup, "transitions")) {
       // Determine dimensions of transitions
@@ -573,13 +570,18 @@ void PhotonInteraction::calculate_xs(Particle& p) const
 
   // Calculate microscopic photoelectric cross section
   xs.photoelectric = 0.0;
-  const auto& xs_lower = xt::row(cross_sections_, i_grid);
-  const auto& xs_upper = xt::row(cross_sections_, i_grid + 1);
+  for (const auto& shell : shells_) {
+    // Check threshold of reaction
+    int i_start = shell.threshold;
+    if (i_grid < i_start)
+      continue;
 
-  for (int i = 0; i < xs_upper.size(); ++i)
-    if (xs_lower(i) != 0)
-      xs.photoelectric +=
-        std::exp(xs_lower(i) + f * (xs_upper(i) - xs_lower(i)));
+    // Evaluation subshell photoionization cross section
+    xs.photoelectric +=
+      std::exp(shell.cross_section(i_grid - i_start) +
+               f * (shell.cross_section(i_grid + 1 - i_start) -
+                     shell.cross_section(i_grid - i_start)));
+  }
 
   // Calculate microscopic pair production cross section
   xs.pair_production = std::exp(
