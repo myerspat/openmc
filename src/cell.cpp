@@ -21,7 +21,6 @@
 #include "openmc/lattice.h"
 #include "openmc/material.h"
 #include "openmc/nuclide.h"
-#include "openmc/operator_stack.h"
 #include "openmc/settings.h"
 #include "openmc/xml_interface.h"
 
@@ -116,46 +115,62 @@ vector<int32_t> tokenize(const std::string region_spec)
 std::vector<int32_t>::iterator add_parenthesis(
   std::vector<int32_t>::iterator start, std::vector<int32_t>& infix)
 {
+  int32_t start_token = *start;
   // Add left parenthesis
-  start = infix.insert(start, OP_LEFT_PAREN);
-  start = start + 2;
+  if (start_token == OP_INTERSECTION) {
+    start = infix.insert(start - 1, OP_LEFT_PAREN);
+  } else {
+    start = infix.insert(start + 1, OP_LEFT_PAREN);
+  }
+  start++;
 
   // Initialize return iterator
-  std::vector<int32_t>::iterator return_iterator = infix.end() - 1;
+  std::vector<int32_t>::iterator return_iterator = infix.begin();
 
   // Add right parenthesis
   // While the start iterator is within the bounds of infix
   while (start < infix.end()) {
     start++;
 
-    // If we find a union or right parenthesis not wrapped by
-    // left and right parenthesis then place a right parenthesis,
-    // If we find a wrapped region return an iterator pointing to
-    // that wrapped region and continue looking to place a
-    // right parenthesis
-    if (*start == OP_UNION || *start == OP_RIGHT_PAREN) {
-      start = infix.insert(start, OP_RIGHT_PAREN);
-      return start - 1;
-
-    } else if (*start == OP_LEFT_PAREN) {
-      return_iterator = start;
-      int depth = 1;
-      do {
-        start++;
-        if (*start > OP_COMPLEMENT) {
-          if (*start == OP_RIGHT_PAREN) {
-            depth--;
-          } else {
-            depth++;
+    // If the current token is an operator and is different than the start token
+    if (*start >= OP_UNION && *start != start_token) {
+      // Skip wraped regions but save iterator position to check precedence and
+      // add right parenthesis depending on the precedence of the original token
+      // when a right parenthesis is encountered of the opposite token
+      if (*start == OP_LEFT_PAREN) {
+        return_iterator = start;
+        int depth = 1;
+        do {
+          start++;
+          if (*start > OP_COMPLEMENT) {
+            if (*start == OP_RIGHT_PAREN) {
+              depth--;
+            } else {
+              depth++;
+            }
           }
+        } while (depth > 0);
+      } else if (start_token == OP_UNION) {
+        start = infix.insert(start - 1, OP_RIGHT_PAREN);
+        if (return_iterator == infix.begin()) {
+          return_iterator = start - 1;
         }
-      } while (depth > 0);
+        return return_iterator;
+      } else {
+        start = infix.insert(start, OP_RIGHT_PAREN);
+        if (return_iterator == infix.begin()) {
+          return_iterator = start - 1;
+        }
+        return return_iterator;
+      }
     }
   }
-
   // If we get here a right parenthesis hasn't been placed,
   // return iterator
   infix.push_back(OP_RIGHT_PAREN);
+  if (return_iterator == infix.begin()) {
+    return_iterator = start - 1;
+  }
   return return_iterator;
 }
 
@@ -171,13 +186,13 @@ void add_precedence(std::vector<int32_t>& infix)
     // If the current operator is a union and the token is an intersection
     // assert precedence
     // If the token is a parenthesis reset the current operator
-    if (token == OP_UNION && current_op == 0) {
-      current_op = OP_UNION;
-
-    } else if (current_op == OP_UNION && token == OP_INTERSECTION) {
-      it = add_parenthesis(it - 1, infix);
-      current_op = 0;
-
+    if (token == OP_UNION || token == OP_INTERSECTION) {
+      if (current_op == 0) {
+        current_op = token;
+      } else if (token != current_op) {
+        it = add_parenthesis(it, infix);
+        current_op = 0;
+      }
     } else if (token > OP_COMPLEMENT) {
       current_op = 0;
     }
@@ -868,7 +883,7 @@ bool CSGCell::contains_complex(
   Position r, Direction u, int32_t on_surface) const
 {
   // Initialize a stack for operators and the in cell boolean
-  OperatorStack op_stack;
+  vector<int32_t> op_stack;
   bool in_cell = true;
 
   // For each token in prefix
@@ -895,7 +910,8 @@ bool CSGCell::contains_complex(
       // While the operator stack is populated
       while (!op_stack.empty()) {
         // Extract the top operator
-        int32_t op = op_stack.pop();
+        int32_t op = op_stack.back();
+        op_stack.pop_back();
 
         if ((op == OP_UNION && in_cell == true) ||
             (op == OP_INTERSECTION && in_cell == false)) {
