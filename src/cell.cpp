@@ -876,7 +876,7 @@ bool CSGCell::contains_complex(
     // If the token is a surface and in_cell is true then evaluate the surfaces
     // sense
     if (token < OP_UNION) {
-        if (in_cell == true) {
+      if (in_cell == true) {
         if (token == on_surface) {
           in_cell = true;
         } else if (-token == on_surface) {
@@ -886,6 +886,8 @@ bool CSGCell::contains_complex(
           bool sense = model::surfaces[abs(token) - 1]->sense(r, u);
           in_cell = (sense == (token > 0));
         }
+      } else if (paren_depth == 0) {
+        return false;
       }
 
     } else if (token == OP_UNION) {
