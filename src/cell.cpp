@@ -19,6 +19,7 @@
 #include "openmc/geometry.h"
 #include "openmc/hdf5_interface.h"
 #include "openmc/lattice.h"
+#include "openmc/logic_stack.h"
 #include "openmc/material.h"
 #include "openmc/nuclide.h"
 #include "openmc/settings.h"
@@ -846,7 +847,8 @@ BoundingBox CSGCell::bounding_box_complex(vector<int32_t> rpn)
 
 BoundingBox CSGCell::bounding_box() const
 {
-  return simple_ ? bounding_box_simple() : bounding_box_complex(region_postfix_);
+  return simple_ ? bounding_box_simple()
+                 : bounding_box_complex(region_postfix_);
 }
 
 //==============================================================================
@@ -878,42 +880,39 @@ bool CSGCell::contains_complex(
   Position r, Direction u, int32_t on_surface) const
 {
   // Make a stack of booleans.  We don't know how big it needs to be, but we do
-  // know that rpn.size() is an upper-bound.
-  vector<bool> stack(region_postfix_.size());
-  int i_stack = -1;
+  // know that region_postfix_.size() is an upper-bound.
+  // vector<bool> stack(region_postfix_.size())
+  LogicStack stack;
 
   for (int32_t token : region_postfix_) {
     // If the token is a binary operator (intersection/union), apply it to
     // the last two items on the stack. If the token is a unary operator
     // (complement), apply it to the last item on the stack.
     if (token == OP_UNION) {
-      stack[i_stack - 1] = stack[i_stack - 1] || stack[i_stack];
-      i_stack--;
+      stack.apply_or();
     } else if (token == OP_INTERSECTION) {
-      stack[i_stack - 1] = stack[i_stack - 1] && stack[i_stack];
-      i_stack--;
+      stack.apply_and();
     } else {
       // If the token is not an operator, evaluate the sense of particle with
       // respect to the surface and see if the token matches the sense. If the
       // particle's surface attribute is set and matches the token, that
       // overrides the determination based on sense().
-      i_stack++;
       if (token == on_surface) {
-        stack[i_stack] = true;
+        stack.push(true);
       } else if (-token == on_surface) {
-        stack[i_stack] = false;
+        stack.push(false);
       } else {
         // Note the off-by-one indexing
         bool sense = model::surfaces[abs(token) - 1]->sense(r, u);
-        stack[i_stack] = (sense == (token > 0));
+        stack.push(sense == (token > 0));
       }
     }
   }
 
-  if (i_stack == 0) {
+  if (stack.size() == 1) {
     // The one remaining bool on the stack indicates whether the particle is
     // in the cell.
-    return stack[i_stack];
+    return stack.top();
   } else {
     // This case occurs if there is no region specification since i_stack will
     // still be -1.
