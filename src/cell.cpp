@@ -898,7 +898,7 @@ bool CSGCell::contains_complex(
         return true;
       } else {
         int short_circuit_depth = 1;
-        while (short_circuit_depth > 0 && it < region_infix_.end() - 1) {
+        while (short_circuit_depth > 0) {
           it++;
           if (*it > OP_COMPLEMENT) {
             if (*it == OP_LEFT_PAREN) {
@@ -916,7 +916,7 @@ bool CSGCell::contains_complex(
       // If in_cell is false then short circuit
       if (in_cell == false) {
         int short_circuit_depth = 1;
-        while (short_circuit_depth > 0 && it < region_infix_.end() - 1) {
+        while (short_circuit_depth > 0) {
           it++;
           if (*it > OP_COMPLEMENT) {
             if (*it == OP_LEFT_PAREN) {
