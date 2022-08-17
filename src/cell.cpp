@@ -898,7 +898,7 @@ bool CSGCell::contains_complex(
         return true;
       } else {
         int short_circuit_depth = 1;
-        while (short_circuit_depth > 0) {
+        do {
           it++;
           if (*it > OP_COMPLEMENT) {
             if (*it == OP_LEFT_PAREN) {
@@ -907,16 +907,17 @@ bool CSGCell::contains_complex(
               short_circuit_depth--;
             }
           }
-        }
+        } while (short_circuit_depth > 0);
+        paren_depth--;
       }
 
     } else if (token == OP_LEFT_PAREN) {
-      paren_depth++;
-      
       // If in_cell is false then short circuit
-      if (in_cell == false) {
+      if (in_cell == true) {
+        paren_depth++;
+      } else {
         int short_circuit_depth = 1;
-        while (short_circuit_depth > 0) {
+        do {
           it++;
           if (*it > OP_COMPLEMENT) {
             if (*it == OP_LEFT_PAREN) {
@@ -925,7 +926,7 @@ bool CSGCell::contains_complex(
               short_circuit_depth--;
             }
           }
-        }
+        } while (short_circuit_depth > 0);
       }
 
     } else {
