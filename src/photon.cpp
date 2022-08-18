@@ -129,7 +129,34 @@ PhotonInteraction::PhotonInteraction(hid_t group)
   }
 
   shells_.resize(n_shell);
-  cross_sections_ = xt::zeros<double>({energy_.size(), n_shell});
+
+  // Calculate total pair production
+  pair_production_total_ = pair_production_nuclear_ + pair_production_electron_;
+
+  // Resize xtensor and view with the following indicies
+  // idx 0: coherent cross sections
+  // idx 1: incoherent cross sections
+  // idx 2: pair production total cross sections
+  // idx 3 - end: subshell photoelectric cross sections
+  cross_sections_.resize({energy_.size(), n_shell + 3});
+  auto coherent_xs = xt::view(cross_sections_, xt::all(), 0);
+  auto incoherent_xs = xt::view(cross_sections_, xt::all(), 1);
+  auto pair_production_xs = xt::view(cross_sections_, xt::all(), 2);
+
+  // Take logarithm of energies and cross sections since they are log-log
+  // interpolated
+  energy_ = xt::log(energy_);
+  coherent_ = xt::where(coherent_ > 0.0, xt::log(coherent_), -500.0);
+  incoherent_ = xt::where(incoherent_ > 0.0, xt::log(incoherent_), -500.0);
+  photoelectric_total_ = xt::where(
+    photoelectric_total_ > 0.0, xt::log(photoelectric_total_), -500.0);
+  pair_production_total_ = xt::where(
+    pair_production_total_ > 0.0, xt::log(pair_production_total_), -500.0);
+  heating_ = xt::where(heating_ > 0.0, xt::log(heating_), -500.0);
+
+  coherent_xs = coherent_;
+  incoherent_xs = incoherent_;
+  pair_production_xs = pair_production_total_;
 
   // Create mapping from designator to index
   std::unordered_map<int, int> shell_map;
@@ -166,8 +193,8 @@ PhotonInteraction::PhotonInteraction(hid_t group)
     close_dataset(dset);
     read_dataset(tgroup, "xs", xs);
 
-    auto cross_section =
-      xt::view(cross_sections_, xt::range(shell.threshold, _), i);
+    auto cross_section = xt::view(cross_sections_,
+      xt::range(shell.threshold, shell.threshold + xs.size()), i + 3);
     cross_section = xt::where(xs > 0, xt::log(xs), 0);
 
     if (object_exists(tgroup, "transitions")) {
@@ -237,9 +264,6 @@ PhotonInteraction::PhotonInteraction(hid_t group)
       profile_cdf_(i, j + 1) = c;
     }
   }
-
-  // Calculate total pair production
-  pair_production_total_ = pair_production_nuclear_ + pair_production_electron_;
 
   if (settings::electron_treatment == ElectronTreatment::TTB) {
     // Read bremsstrahlung scaled DCS
@@ -316,17 +340,6 @@ PhotonInteraction::PhotonInteraction(hid_t group)
       stopping_power_radiative_(i) = Z_ * Z_ / beta_sq * e * c;
     }
   }
-
-  // Take logarithm of energies and cross sections since they are log-log
-  // interpolated
-  energy_ = xt::log(energy_);
-  coherent_ = xt::where(coherent_ > 0.0, xt::log(coherent_), -500.0);
-  incoherent_ = xt::where(incoherent_ > 0.0, xt::log(incoherent_), -500.0);
-  photoelectric_total_ = xt::where(
-    photoelectric_total_ > 0.0, xt::log(photoelectric_total_), -500.0);
-  pair_production_total_ = xt::where(
-    pair_production_total_ > 0.0, xt::log(pair_production_total_), -500.0);
-  heating_ = xt::where(heating_ > 0.0, xt::log(heating_), -500.0);
 }
 
 PhotonInteraction::~PhotonInteraction()
@@ -563,28 +576,29 @@ void PhotonInteraction::calculate_xs(Particle& p) const
   xs.index_grid = i_grid;
   xs.interp_factor = f;
 
-  // Calculate microscopic coherent cross section
-  xs.coherent = std::exp(
-    coherent_(i_grid) + f * (coherent_(i_grid + 1) - coherent_(i_grid)));
-
-  // Calculate microscopic incoherent cross section
-  xs.incoherent = std::exp(
-    incoherent_(i_grid) + f * (incoherent_(i_grid + 1) - incoherent_(i_grid)));
-
-  // Calculate microscopic photoelectric cross section
-  xs.photoelectric = 0.0;
+  // Find upper and lower rows of cross_sections_
   const auto& xs_lower = xt::row(cross_sections_, i_grid);
   const auto& xs_upper = xt::row(cross_sections_, i_grid + 1);
 
-  for (int i = 0; i < xs_upper.size(); ++i)
-    if (xs_lower(i) != 0)
-      xs.photoelectric +=
-        std::exp(xs_lower(i) + f * (xs_upper(i) - xs_lower(i)));
+  // Interpolate
+  const auto interp_xs = xt::exp(xs_lower + f * (xs_upper - xs_lower));
 
-  // Calculate microscopic pair production cross section
-  xs.pair_production = std::exp(
-    pair_production_total_(i_grid) +
-    f * (pair_production_total_(i_grid + 1) - pair_production_total_(i_grid)));
+  // Calculate microscopic coherent cross section
+  xs.coherent = interp_xs(0);
+
+  // Calculate microscopic incoherent cross section
+  xs.incoherent = interp_xs(1);
+
+  // Calculate pair production cross section
+  xs.pair_production = interp_xs(2);
+
+  // Calculate microscopic photoelectric cross section
+  xs.photoelectric = 0.0;
+  for (int i = 3; i < xs_upper.size(); i++) {
+    if (xs_lower(i) != 0) {
+      xs.photoelectric += interp_xs(i);
+    }
+  }
 
   // Calculate microscopic total cross section
   xs.total =
