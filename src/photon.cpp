@@ -17,6 +17,7 @@
 #include "xtensor/xmath.hpp"
 #include "xtensor/xoperation.hpp"
 #include "xtensor/xslice.hpp"
+#include "xtensor/xtensor_forward.hpp"
 #include "xtensor/xview.hpp"
 
 #include <cmath>
@@ -169,6 +170,15 @@ PhotonInteraction::PhotonInteraction(hid_t group)
     auto cross_section =
       xt::view(cross_sections_, xt::range(shell.threshold, _), i);
     cross_section = xt::where(xs > 0, xt::log(xs), 0);
+
+    if (i == 0) {
+      max_threshold_idx = shell.threshold;
+      min_threshold_idx = shell.threshold;
+    } else if (max_threshold_idx < shell.threshold) {
+      max_threshold_idx = shell.threshold;
+    } else if (min_threshold_idx > shell.threshold) {
+      min_threshold_idx = shell.threshold;
+    }
 
     if (object_exists(tgroup, "transitions")) {
       // Determine dimensions of transitions
@@ -573,13 +583,21 @@ void PhotonInteraction::calculate_xs(Particle& p) const
 
   // Calculate microscopic photoelectric cross section
   xs.photoelectric = 0.0;
-  const auto& xs_lower = xt::row(cross_sections_, i_grid);
-  const auto& xs_upper = xt::row(cross_sections_, i_grid + 1);
+  if (i_grid >= max_threshold_idx) {
+    xs.photoelectric = std::exp(
+      photoelectric_total_(i_grid) +
+      f * (photoelectric_total_(i_grid + 1) - photoelectric_total_(i_grid)));
+  } else if (i_grid >= min_threshold_idx) {
+    const auto& xs_lower = xt::row(cross_sections_, i_grid);
+    const auto& xs_upper = xt::row(cross_sections_, i_grid + 1);
 
-  for (int i = 0; i < xs_upper.size(); ++i)
-    if (xs_lower(i) != 0)
-      xs.photoelectric +=
-        std::exp(xs_lower(i) + f * (xs_upper(i) - xs_lower(i)));
+    for (int i = 0; i < xs_upper.size(); i++) {
+      if (xs_lower(i) != 0) {
+        xs.photoelectric +=
+          std::exp(xs_lower(i) + f * (xs_upper(i) - xs_lower(i)));
+      }
+    }
+  }
 
   // Calculate microscopic pair production cross section
   xs.pair_production = std::exp(

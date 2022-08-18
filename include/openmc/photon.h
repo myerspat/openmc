@@ -84,6 +84,8 @@ public:
   // total cross section
   vector<ElectronSubshell> shells_;
   xt::xtensor<double, 2> cross_sections_;
+  int max_threshold_idx;
+  int min_threshold_idx;
 
   // Compton profile data
   xt::xtensor<double, 2> profile_pdf_;
